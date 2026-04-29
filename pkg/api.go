@@ -253,7 +253,8 @@ func RunAction(ctx context.Context, value shuffle.CategoryAction, retries ...int
 		ctx = context.Background()
 	}
 
-	if len(ctx.Value("caller").(string)) == 0 {
+	v, _ := ctx.Value("caller").(string)
+	if len(v) == 0 {
 		ctx = context.WithValue(ctx, "caller", "RunAction")
 	}
 
@@ -298,7 +299,8 @@ func GetActionAIResponseWrapper(ctx context.Context, input shuffle.QueryInput) (
 	}
 
 	// lets get the caller, if empty lets add the current caller function
-	if len(ctx.Value("caller").(string)) == 0 {
+	v, _ := ctx.Value("caller").(string)
+	if len(v) == 0 {
 		ctx = context.WithValue(ctx, "caller", "GetActionAIResponseWrapper")
 	}
 
@@ -381,7 +383,7 @@ func handleDirectTranslation(ctx context.Context, user shuffle.User, value shuff
 
 	// Is there any way to ingest these as well? 
 	schemalessOutput, translationFilePath, schemalessErr := schemaless.Translate(ctx, value.Label, marshalledFields, authConfig)
-	if err != nil {
+	if schemalessErr != nil {
 		log.Printf("[ERROR] Singul - Failed doing direct translation in category action: %s", schemalessErr)
 		return nil, schemalessErr 
 	}
@@ -824,7 +826,8 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 		ctx = context.Background()
 	}
 
-	if len(ctx.Value("caller").(string)) == 0 {
+	v, _ := ctx.Value("caller").(string)
+	if len(v) == 0 {
 		ctx = context.WithValue(ctx, "caller", "RunActionWrapper")
 	}
 
@@ -5102,7 +5105,8 @@ func AnalyzeIntentAndCorrectApp(ctx context.Context, query string, fields []shuf
 		ctx = context.Background()
 	}
 
-	if len(ctx.Value("caller").(string)) == 0 {
+	v, _ := ctx.Value("caller").(string)
+	if len(v) == 0 {
 		ctx = context.WithValue(ctx, "caller", "AnalyzeIntentAndCorrectApp")
 	}
 
