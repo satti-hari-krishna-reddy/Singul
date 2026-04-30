@@ -253,11 +253,6 @@ func RunAction(ctx context.Context, value shuffle.CategoryAction, retries ...int
 		ctx = context.Background()
 	}
 
-	v, _ := ctx.Value("caller").(string)
-	if len(v) == 0 {
-		ctx = context.WithValue(ctx, "caller", "RunAction")
-	}
-
 	foundResponse, err := RunActionWrapper(ctx, user, value, resp, request)
 	if strings.Contains(string(foundResponse), `success": false`) {
 		outputString := outputMarshal{}
@@ -296,12 +291,6 @@ func GetActionAIResponseWrapper(ctx context.Context, input shuffle.QueryInput) (
 
 	if ctx == nil {
 		ctx = context.Background()
-	}
-
-	// lets get the caller, if empty lets add the current caller function
-	v, _ := ctx.Value("caller").(string)
-	if len(v) == 0 {
-		ctx = context.WithValue(ctx, "caller", "GetActionAIResponseWrapper")
 	}
 
 	foundResponse, err := shuffle.GetActionAIResponse(ctx, resp, shuffle.User{}, shuffle.Org{}, input.OutputFormat, input)
@@ -824,11 +813,6 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 
 	if ctx == nil {
 		ctx = context.Background()
-	}
-
-	v, _ := ctx.Value("caller").(string)
-	if len(v) == 0 {
-		ctx = context.WithValue(ctx, "caller", "RunActionWrapper")
 	}
 
 	// Handles direct translations instead of app runs
@@ -5103,11 +5087,6 @@ func AnalyzeIntentAndCorrectApp(ctx context.Context, query string, fields []shuf
 
 	if ctx == nil {
 		ctx = context.Background()
-	}
-
-	v, _ := ctx.Value("caller").(string)
-	if len(v) == 0 {
-		ctx = context.WithValue(ctx, "caller", "AnalyzeIntentAndCorrectApp")
 	}
 
 	systemMessage := `You are an API identification assistant. 
