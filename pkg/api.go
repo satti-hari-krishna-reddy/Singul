@@ -191,9 +191,6 @@ func RunCategoryAction(resp http.ResponseWriter, request *http.Request) {
 		}
 	}
 
-	ctx = context.WithValue(ctx, "caller", "RunCategoryAction")
-	ctx = context.WithValue(ctx, "org_id", org.Id)
-
 	RunActionWrapper(ctx, user, value, resp, request)
 }
 
