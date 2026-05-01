@@ -5117,7 +5117,8 @@ Return ONLY the app/service name (e.g., Gmail, Slack, GitHub).
 If this is a generic HTTP call with no specific service, return "http".`,
 		query, urlValue, fieldsSummary)
 
-	responseBody, err := shuffle.RunAiQuery(ctx, systemMessage, userMessage)
+	callInfo := shuffle.AiCallInfo{Caller: "AnalyzeIntentAndCorrectApp"}
+	responseBody, err := shuffle.RunAiQuery(ctx, callInfo, systemMessage, userMessage)
 	if err != nil {
 		log.Printf("[WARNING] Failed calling LLM for app intent correction: %s", err)
 		return ""
