@@ -2259,7 +2259,7 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 					mapToSearch := map[string]interface{}{}
 					err := json.Unmarshal([]byte(param.Value), &mapToSearch)
 					if err != nil {
-						log.Printf("[ERROR] Failed unmarshalling body for file content: %s. Body: %#v", err, string(param.Value))
+						log.Printf("[ERROR] Failed unmarshalling body for file content (1): %s. Body: %#v", err, string(param.Value))
 						continue
 					}
 
@@ -2272,7 +2272,7 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 					// Marshal back to JSON
 					marshalledMap, err := json.MarshalIndent(outputMap, "", "    ")
 					if err != nil {
-						log.Printf("[WARNING] Failed marshalling body for file content: %s", err)
+						log.Printf("[WARNING] Failed marshalling body for file content (2): %s", err)
 					} else {
 						selectedAction.Parameters[paramIndex].Value = string(marshalledMap)
 						missingFields = shuffle.RemoveFromArray(missingFields, key)
@@ -2604,13 +2604,14 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 			missingBodyParams := validatePreparedActionHasFields(preparedAction, value.Fields, i, originalActionName)
 
 			// FIXME: How to deal with random fields here?
+			// Primary issue is with e.g. escaped JSON
 			if debug && len(missingBodyParams) > 0 { 
 				parsedParams := ""
 				for _, param := range secondAction.Parameters {
 					parsedParams = fmt.Sprintf("%s%s: '%s'\n", parsedParams, param.Name, param.Value)
 				}
 
-				log.Printf("\n\n\nMISSING PARAMS (%s => %s): %#v. Available params:\n%s\n\n\n", originalActionName, secondAction.Name, missingBodyParams, parsedParams)
+				log.Printf("\n\n\n[DEBUG] MISSING PARAMS (%s => %s): %#v. Available params:\n%s\n\n\n", originalActionName, secondAction.Name, missingBodyParams, parsedParams)
 			}
 
 			if len(missingBodyParams) > 0 {
@@ -2631,7 +2632,7 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 					}
 
 					if debug { 
-						log.Printf("[ERROR] Problem with missing fields: %#v. This means you MAY get the wrong outcome. Rerunning translations to ensure all fields are included.", strings.Join(allMissingFields, ","))
+						log.Printf("[ERROR] Debug: Problem with missing fields: %#v. This means you MAY get the wrong outcome. Rerunning translations to ensure all fields are included.", strings.Join(allMissingFields, ","))
 					}
 
 					// Remove last newline from preparedBody.Result
@@ -3187,7 +3188,7 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 					autoUploadSingulOutput(ctx, curOrg, curApikey, curExecutionId, curBackend, translationFilePath, parsedTranslation, value, secondAction)
 				} else {
 					if debug { 
-						log.Printf("[DEBUG] Singul: NOT uploading. Label: %#v. LabelSplit: %#v. Org: %#v, APIKEY LEN: %D\n\n", value.Label, foundLabelSplit, curOrg, len(curApikey))
+						log.Printf("[DEBUG] Singul: NOT uploading. Label: %#v. LabelSplit: %#v. Org: %#v, APIKEY LEN: %d\n\n", value.Label, foundLabelSplit, curOrg, len(curApikey))
 					}
 				}
 			}
@@ -3199,7 +3200,6 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 
 			parsedTranslation.Retries = i + 1
 			if len(foundName) > 0 {
-				log.Printf("[DEBUG] Reverse lookup SUCCESS! Name: '%s', Labels: %v", foundName, foundLabels)
 				parsedTranslation.ActionName = foundName
 			}
 
@@ -4049,16 +4049,31 @@ func validatePreparedActionHasFields(preparedAction []byte, fields []shuffle.Val
 		log.Printf("[ERROR] Failed unmarshalling action in VALIDATE PreparedAction %s: %s", unmarshalledAction.AppID, err)
 	}
 
-	//for _, param := range unmarshalledAction.Parameters {
-	//	log.Printf("PARAM: %s = '%s'", param.Name, param.Value)
-	//}
+	// 1. Loops input fields (input data)
+	// 2. Checks parameters IF they have the data
 
 	// Since fields can be different
 	for _, field := range fields {
 		valueFound := false
+
+		escapedValue := ""
+		sortedIndentedJson := ""
+		isJson := false
+		if (strings.HasPrefix(field.Value, "{") && strings.HasSuffix(field.Value, "}")) || (strings.HasPrefix(field.Value, "[") && strings.HasSuffix(field.Value, "]")) {
+			isJson = true
+			escapedValue = strings.ToLower(strings.ReplaceAll(field.Value, `"`, `\"`))
+
+			var parsed interface{}
+			err := json.Unmarshal([]byte(field.Value), &parsed)
+			if err == nil {
+				if sortedBytes, err := json.MarshalIndent(parsed, "", "  "); err == nil {
+					sortedIndentedJson = strings.ToLower(string(sortedBytes))
+				} 
+			}
+		}
+
 		for paramIndex, param := range unmarshalledAction.Parameters {
-			// FIXME: Why contains specifically?
-			// Should prolly do a fuzzy match mechanism 
+			// Should prolly do a fuzzy match mechanism?
 			if strings.Contains(param.Value, field.Value) {
 				valueFound = true
 				break
@@ -4072,10 +4087,28 @@ func validatePreparedActionHasFields(preparedAction []byte, fields []shuffle.Val
 					break
 				}
 			}
+
+			// Check if field data looks like JSON. Try to escape it
+			// This is JUST a super-simple check, as it's not vital if this works
+			// or not anyway
+			if isJson {
+				loweredValue := strings.ToLower(param.Value)
+				// 1. Try escaping quotes, as that's a common issue
+				if len(escapedValue) > 0 && strings.Contains(loweredValue, escapedValue) {
+					valueFound = true
+					break
+				}
+
+				// 2. Try to parse & sort it as that is common as well (2 spaces)
+				if len(sortedIndentedJson) > 0 && strings.Contains(loweredValue, sortedIndentedJson) {
+					valueFound = true
+					break
+				}
+			}
 		}
 
 		if !valueFound {
-			// FIXME: Question here is: can we in theory just inject it?
+			// The main problem here is parsed JSON.
 			if debug { 
 				log.Printf("[ERROR] Debug: Field '%s' with value '%s' not found in prepared action for app %s action %s", field.Key, field.Value, unmarshalledAction.AppID, unmarshalledAction.Name)
 			}
@@ -4083,11 +4116,6 @@ func validatePreparedActionHasFields(preparedAction []byte, fields []shuffle.Val
 			missingFieldsInBody[field.Key] = field.Value
 		}
 	}
-
-	//for _, param := range unmarshalledAction.Parameters {
-	//	log.Printf("PARAM2: %s = '%s'", param.Name, param.Value)
-	//}
-
 
 	// Deleting relevant fields IF anything is missing.
 	if len(missingFieldsInBody) > 0 {
@@ -5363,7 +5391,9 @@ func IdentifyCustomAction(ctx context.Context, app shuffle.WorkflowApp, actionNa
 	// Perform the Reverse Lookup
 	fLabels, fName, err := FindMatchingActionFromURL(ctx, app, foundMethod, foundUrl)
 	if err != nil {
-		log.Printf("[DEBUG] Reverse lookup failed for %s %s: %v", foundMethod, foundUrl, err)
+		if debug { 
+			log.Printf("[DEBUG] Reverse lookup failed for '%s' '%s': %v", foundMethod, foundUrl, err)
+		}
 		return "", []string{}
 	}
 
