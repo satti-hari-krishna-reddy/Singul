@@ -11,9 +11,9 @@ toolchain go1.24.4
 require (
 	github.com/andybalholm/brotli v1.2.0
 	github.com/frikky/kin-openapi v0.42.0
-	github.com/frikky/schemaless v0.0.33
+	github.com/frikky/schemaless v0.0.34
 	github.com/satori/go.uuid v1.2.0
-	github.com/shuffle/shuffle-shared v1.2.23
+	github.com/shuffle/shuffle-shared v1.2.43
 	github.com/spf13/cobra v1.9.1
 )
 
