@@ -764,8 +764,7 @@ func autoUploadSingulOutput(ctx context.Context, orgId, curApikey, curExecutionI
 	//} else {
 	//	log.Printf("[ERROR] Singul output for label %s is not an array: %#v", value.Label, parsedTranslation.Output)
 	//}
-
-	log.Printf("\n\n\n")
+	//log.Printf("\n\n\n")
 }
 
 
@@ -802,6 +801,11 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 
 	if len(user.ActiveOrg.Id) > 0 && len(value.OrgId) == 0 {
 		value.OrgId = user.ActiveOrg.Id
+	}
+
+	if strings.HasPrefix(value.Label, "()") {
+		value.Label = strings.TrimSuffix(value.Label, "()")
+		value.Action = strings.TrimSuffix(value.Action, "()")
 	}
 
 	if ctx == nil {
@@ -914,6 +918,10 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 	// Smart app correction: Only for generic API calls, not custom_action
 	// custom_action means user already chose an app - don't override
 	if strings.ToLower(value.AppName) == "http" && value.Label == "api" && len(value.Query) > 0 {
+		if debug { 
+			log.Printf("[DEBUG] Got generic API call with app 'http' and query '%s'. Analyzing intent to correct app selection if needed.", value.Query)
+		}
+
 		correctedAppName := AnalyzeIntentAndCorrectApp(ctx, value.Query, value.Fields)
 		if len(correctedAppName) > 0 && strings.ToLower(correctedAppName) != "http" {
 			value.AppName = correctedAppName
@@ -921,9 +929,12 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 		}
 	}
 
-	if strings.ToLower(value.AppName) == "http" {
-		value.AppName = ""
-	}
+	//if strings.ToLower(value.AppName) == "http" {
+	//  if debug {
+	//    log.Printf("[DEBUG] Got app 'http' with label '%s'. Checking if this is a generic API call that should be remapped to HTTP 1.4.0 standards.", value.Label)
+	//  }
+	//	value.AppName = ""
+	//}
 
 	foundIndex := -1
 	labelIndex := -1
@@ -2812,6 +2823,11 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 			}
 
 			httpOutput, marshalledBody, httpParseErr = shuffle.FindHttpBody(apprunBody)
+
+			//	resp.Write(marshalledBody)
+			//	return marshalledBody, nil
+			//}
+
 			//log.Printf("\n\nGOT RESPONSE (%d): %s. STATUS: %d\n\n",  newresp.StatusCode, string(apprunBody), httpOutput.Status)
 			if successStruct.Success == false && len(successStruct.Reason) > 0 && httpOutput.Status == 0 && strings.Contains(strings.ReplaceAll(string(apprunBody), " ", ""), `"success":false`) {
 				log.Printf("[WARNING][AI] Failed running app %s (%s). Contact support. Reason: %s", selectedAction.Name, selectedAction.AppID, successStruct.Reason)
@@ -2900,7 +2916,26 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 				}
 			}
 
-			//if httpParseErr == nil && httpOutput.Status < 300 && httpOutput.Status > 0 && successStruct.Success {
+			if !selectedApp.Generated { 
+				httpOutput.Success = true
+				parsedTranslation.Success = true 
+
+				parsedTranslation.Retries = maxRerunAttempts
+				parsedTranslation.RawResponse = apprunBody 
+				parsedTranslation.Output = apprunBody
+
+				parsedOutput, err := json.Marshal(parsedTranslation)
+				if err != nil {
+					resp.WriteHeader(400)
+					resp.Write(apprunBody)
+					return apprunBody, err
+				}
+
+				resp.WriteHeader(200)
+				resp.Write(parsedOutput)
+				return parsedOutput, nil
+			}
+
 			if httpParseErr == nil && httpOutput.Status < 300 && httpOutput.Status >= 200 {
 				if debug {
 					log.Printf("[DEBUG] Found status from schemaless: %d. Saving the current fields as base. Attempts: %d, Request Time taken: %s", httpOutput.Status, i+1, time.Now().Sub(startTime))
@@ -3105,7 +3140,8 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 			if err != nil {
 				log.Printf("[ERROR] Schemaless failure for label '%s' in org '%s'", value.Label, orgId)
 
-				if value.AppName == "HTTP" || value.App == "HTTP" {
+				//if strings.ToUpper(value.AppName) == "HTTP" || value.App == "HTTP" {
+				if !selectedApp.Generated {
 					parsedTranslation.Success = true
 				} else {
 					log.Printf("[ERROR] Failed translating schemaless output for label '%s': %s", value.Label, err)
@@ -4689,7 +4725,8 @@ func handleStandaloneExecution(workflow shuffle.Workflow) ([]byte, error) {
 }
 
 func GetOrgspecificParameters(ctx context.Context, fields []shuffle.Valuereplace, org shuffle.Org, action shuffle.WorkflowAppAction, originalActionName string) shuffle.WorkflowAppAction {
-	if strings.ToLower(action.AppName) == "http" || (action.Name == "custom_action" && originalActionName == "custom_action" && len(fields) == 0) {
+	//if strings.ToLower(action.AppName) == "http" || (action.Name == "custom_action" && originalActionName == "custom_action" && len(fields) == 0) {
+	if action.Name == "custom_action" && originalActionName == "custom_action" && len(fields) == 0 {
 		if debug {
 			log.Printf("[DEBUG] Skipping org specific parameters for HTTP or custom_action")
 		}
@@ -4803,7 +4840,6 @@ func GetActionFromLabel(ctx context.Context, app shuffle.WorkflowApp, label stri
 	lowercaseLabel := strings.ReplaceAll(strings.ToLower(label), " ", "_")
 	exactMatch := false
 	for _, action := range app.Actions {
-
 		// Edgecases to autocorrect actions outside of "just" Singul
 		// E.g. RANDOM request from user -> find action -> try it and fix
 		if lowercaseLabel == "api" && action.Name == "custom_action" {
@@ -4816,6 +4852,12 @@ func GetActionFromLabel(ctx context.Context, app shuffle.WorkflowApp, label stri
 				selectedAction = action
 				break
 			}
+		}
+
+		lowercaseActionname := strings.ReplaceAll(strings.ToLower(action.Name), " ", "_")
+		if lowercaseActionname == lowercaseLabel {
+			selectedAction = action
+			break
 		}
 
 		if len(action.CategoryLabel) == 0 {
