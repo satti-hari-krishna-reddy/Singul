@@ -2920,9 +2920,9 @@ func RunActionWrapper(ctx context.Context, user shuffle.User, value shuffle.Cate
 				httpOutput.Success = true
 				parsedTranslation.Success = true 
 
-				parsedTranslation.Retries = maxRerunAttempts
+				parsedTranslation.Retries = i 
 				parsedTranslation.RawResponse = apprunBody 
-				parsedTranslation.Output = apprunBody
+				//parsedTranslation.Output = apprunBody
 
 				parsedOutput, err := json.Marshal(parsedTranslation)
 				if err != nil {
